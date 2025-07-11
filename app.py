@@ -1,14 +1,15 @@
-from flask import Flask, jsonify
+from flask import Flask
+from flask import jsonify
 
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return jsonify(message="Hello from Flask!")
+    return "Hello from Flask!"
 
-@app.route("/healthz")
+@app.route("/health")
 def health():
-    return "OK", 200
+    return jsonify(status="ok"), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
