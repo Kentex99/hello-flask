@@ -53,8 +53,8 @@ jobs:
           }
           EOD
 
-          # 2) Zip it up
-          zip deploy.zip Dockerrun.aws.json
+          # 2) Zip it up,including .ebextensions for config
+          zip -r deploy.zip Dockerrun.aws.json .ebextensions
 
           # 3) Ask EB for its S3 bucket
           S3_BUCKET=$(aws elasticbeanstalk create-storage-location --output text)
