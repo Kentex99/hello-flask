@@ -42,7 +42,7 @@ jobs:
           ECR_REPOSITORY: hello-flask
           IMAGE_TAG: ${{ github.sha }}
           APPLICATION_NAME: hello-flask
-          ENVIRONMENT_NAME: hello-flask-prod
+          ENVIRONMENT_NAME: hello-flask-env
         run: |
           # 1) Generate Dockerrun.aws.json
           cat > Dockerrun.aws.json <<EOB
