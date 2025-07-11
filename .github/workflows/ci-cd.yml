@@ -1,0 +1,73 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:    ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key:${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:           ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag & push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: hello-flask
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Deploy to Elastic Beanstalk
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: hello-flask
+          IMAGE_TAG: ${{ github.sha }}
+          APPLICATION_NAME: hello-flask
+          ENVIRONMENT_NAME: hello-flask-prod
+        run: |
+          cat > Dockerrun.aws.json <<EOF
+          {
+            "AWSEBDockerrunVersion": 2,
+            "containerDefinitions": [
+              {
+                "name": "web",
+                "image": "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}",
+                "essential": true,
+                "memory": 512,
+                "portMappings": [{ "hostPort": 5000, "containerPort": 5000 }]
+              }
+            ]
+          }
+          EOF
+
+          zip deploy.zip Dockerrun.aws.json
+          aws elasticbeanstalk create-application-version \
+            --application-name $APPLICATION_NAME \
+            --version-label $IMAGE_TAG \
+            --source-bundle S3Bucket=$(aws elasticbeanstalk describe-application-versions \
+                                      --application-name $APPLICATION_NAME \
+                                      --query "ApplicationVersions[?VersionLabel=='${IMAGE_TAG}'].[SourceBundle.S3Bucket]" \
+                                      --output text),S3Key=deploy.zip
+
+          aws elasticbeanstalk update-environment \
+            --environment-name $ENVIRONMENT_NAME \
+            --version-label $IMAGE_TAG
