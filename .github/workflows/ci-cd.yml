@@ -36,46 +36,45 @@ jobs:
           docker push   $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push   $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      - name: Deploy to Elastic Beanstalk
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: hello-flask
-          IMAGE_TAG: ${{ github.sha }}
-          APPLICATION_NAME: hello-flask
-          ENVIRONMENT_NAME: hello-flask-env
-        run: |
-          # 1) Generate Dockerrun.aws.json
-          cat > Dockerrun.aws.json <<EOB
-          {
-            "AWSEBDockerrunVersion": 2,
-            "containerDefinitions": [
-              {
-                "name": "web",
-                "image": "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}",
-                "essential": true,
-                "memory": 512,
-                "portMappings": [{ "hostPort": 80, "containerPort": 5000 }]
-              }
-            ]
-          }
-          EOB
+         - name: Deploy to Elastic Beanstalk
+     env:
+       ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+       ECR_REPOSITORY: hello-flask
+       IMAGE_TAG: ${{ github.sha }}
+       APPLICATION_NAME: hello-flask
+       ENVIRONMENT_NAME: hello-flask-env
+     run: |
+       # 1) Generate a v1 Dockerrun (single-container)
+       cat > Dockerrun.aws.json <<EOF
+       {
+         "AWSEBDockerrunVersion": "1",
+         "Image": {
+           "Name": "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}",
+           "Update": "true"
+         },
+         "Ports": [
+           { "ContainerPort": 5000 }
+         ]
+       }
+       EOF
 
-          # 2) Zip it up
-          zip deploy.zip Dockerrun.aws.json
+       # 2) Zip it up
+       zip deploy.zip Dockerrun.aws.json
 
-          # 3) Find EB's S3 bucket
-          S3_BUCKET=$(aws elasticbeanstalk create-storage-location --output text)
+       # 3) Ask EB for its S3 bucket
+       S3_BUCKET=$(aws elasticbeanstalk create-storage-location --output text)
 
-          # 4) Upload the zip
-          aws s3 cp deploy.zip s3://$S3_BUCKET/$IMAGE_TAG.zip
+       # 4) Upload the zip
+       aws s3 cp deploy.zip s3://$S3_BUCKET/$IMAGE_TAG.zip
 
-          # 5) Create an application version
-          aws elasticbeanstalk create-application-version \
-            --application-name $APPLICATION_NAME \
-            --version-label $IMAGE_TAG \
-            --source-bundle S3Bucket=$S3_BUCKET,S3Key=$IMAGE_TAG.zip
+       # 5) Create the new application version
+       aws elasticbeanstalk create-application-version \
+         --application-name $APPLICATION_NAME \
+         --version-label $IMAGE_TAG \
+         --source-bundle S3Bucket=$S3_BUCKET,S3Key=$IMAGE_TAG.zip
 
-          # 6) Update the environment
-          aws elasticbeanstalk update-environment \
-            --environment-name $ENVIRONMENT_NAME \
-            --version-label $IMAGE_TAG
+       # 6) Push it live
+       aws elasticbeanstalk update-environment \
+         --environment-name $ENVIRONMENT_NAME \
+         --version-label $IMAGE_TAG
+
