@@ -32,9 +32,9 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag    $ECR_REGISTRY/$ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push   $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push   $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
       - name: Deploy to Elastic Beanstalk
         env:
@@ -44,7 +44,8 @@ jobs:
           APPLICATION_NAME: hello-flask
           ENVIRONMENT_NAME: hello-flask-prod
         run: |
-          cat > Dockerrun.aws.json <<EOF
+          # 1) Generate Dockerrun.aws.json
+          cat > Dockerrun.aws.json <<EOB
           {
             "AWSEBDockerrunVersion": 2,
             "containerDefinitions": [
@@ -57,17 +58,24 @@ jobs:
               }
             ]
           }
-          EOF
+          EOB
 
+          # 2) Zip it up
           zip deploy.zip Dockerrun.aws.json
+
+          # 3) Find EB's S3 bucket
+          S3_BUCKET=$(aws elasticbeanstalk create-storage-location --output text)
+
+          # 4) Upload the zip
+          aws s3 cp deploy.zip s3://$S3_BUCKET/$IMAGE_TAG.zip
+
+          # 5) Create an application version
           aws elasticbeanstalk create-application-version \
             --application-name $APPLICATION_NAME \
             --version-label $IMAGE_TAG \
-            --source-bundle S3Bucket=$(aws elasticbeanstalk describe-application-versions \
-                                      --application-name $APPLICATION_NAME \
-                                      --query "ApplicationVersions[?VersionLabel=='${IMAGE_TAG}'].[SourceBundle.S3Bucket]" \
-                                      --output text),S3Key=deploy.zip
+            --source-bundle S3Bucket=$S3_BUCKET,S3Key=$IMAGE_TAG.zip
 
+          # 6) Update the environment
           aws elasticbeanstalk update-environment \
             --environment-name $ENVIRONMENT_NAME \
             --version-label $IMAGE_TAG
