@@ -54,7 +54,7 @@ jobs:
                 "image": "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}",
                 "essential": true,
                 "memory": 512,
-                "portMappings": [{ "hostPort": 5000, "containerPort": 5000 }]
+                "portMappings": [{ "hostPort": 80, "containerPort": 5000 }]
               }
             ]
           }
